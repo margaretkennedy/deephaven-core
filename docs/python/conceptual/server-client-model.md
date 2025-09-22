@@ -56,6 +56,7 @@ Deephaven servers and clients follow the standard server-client software archite
 A couple of additional details worth noting:
 
 Not all of Deephaven's client APIs support ticking data like the server does. When the client does not support ticking data, it receives snapshots of live tables when they are requested.
+
 - Clients are agnostic to the server-side API language being used.
 
 ## Deephaven's APIs
