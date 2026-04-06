@@ -39,6 +39,11 @@ listener = new InstrumentedTableUpdateListener("demo-listener") {
     void onUpdate(io.deephaven.engine.table.TableUpdate upstream) {
         println "Table updated: ${upstream.added().size()} new row(s)"
     }
+
+    @Override
+    void onFailureInternal(Throwable originalException, io.deephaven.engine.table.TableListener.Entry sourceEntry) {
+        originalException.printStackTrace()
+    }
 }
 tt.addUpdateListener(listener)
 
