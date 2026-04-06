@@ -3,80 +3,157 @@ title: How to use liveness scopes
 sidebar_label: Liveness scope
 ---
 
-This guide discusses liveness scopes. It covers what a liveness scope is, how to use one, and why queries can benefit from its use.
+A liveness scope lets you control when Deephaven stops updating ticking tables. This is useful when you create temporary tables that you'll discard — without a liveness scope, those tables keep updating in the background until Java garbage collection eventually cleans them up.
 
-Liveness scopes give users a finer degree of control over cleanup of unreferenced nodes in the [query update graph](./table-update-model.md). A node in the update graph can be a table, plot, or any other object. A liveness scope automatically manages reference counting of the nodes created within it. Resources can be programmatically freed from a liveness scope.
+> [!NOTE]
+> Liveness scopes only matter for **ticking (live) tables**. Static tables don't update, so they don't benefit from liveness scope management.
 
 ## Why use a liveness scope?
 
-Deephaven's engine runs in Java, in which garbage collection is handled by the JVM. Users have little control over when garbage collection takes place, as the JVM tries to optimize when it occurs to minimize GC runtime and maximize the amount of memory left available after it's run.
+Consider a dashboard that lets users filter data by different criteria. Each time the user changes the filter, you create a new ticking table. The old table is no longer displayed, but Deephaven's [update graph](./table-update-model.md) keeps refreshing it until garbage collection runs — which could be seconds, minutes, or longer.
 
-Liveness scopes give users much more control over the query update graph and over garbage collection. Without liveness scope, queries rely solely on the JVM to perform garbage collection to clean up unreferenced nodes in the DAG. In most cases, this is acceptable. However, there are cases where a query can benefit from the use of a liveness scope.
+This wastes CPU cycles and memory. With many filter changes, you could have dozens of "zombie" tables updating in the background.
+
+A liveness scope solves this: when you call `release`, the update graph **immediately** stops refreshing all tables managed by that scope. You don't have to wait for garbage collection.
+
+## Example: Seeing liveness scope in action
+
+This example demonstrates the effect of releasing a liveness scope. We create a ticking time table with a listener that prints a message on each update. When the scope is released, the updates stop immediately.
+
+```python test-set=liveness-demo order=1
+from deephaven import time_table
+from deephaven.liveness_scope import LivenessScope
+from deephaven.table_listener import listen
+
+# Create a liveness scope
+scope = LivenessScope()
+
+with scope.open():
+    # Create a time table that ticks every second
+    tt = time_table("PT1S")
+
+    # Attach a listener that prints on each tick
+    def on_update(update, is_replay):
+        added_rows = update.added()
+        if added_rows:
+            print(f"Table updated: {len(added_rows['Timestamp'])} new row(s)")
+
+    my_listener = listen(tt, on_update)
+```
+
+After the `with` block exits, the scope is still **open** (not released). The table continues ticking and the listener prints "Table updated..." every second — even though the code block has finished.
+
+To stop the updates, release the scope:
+
+```python test-set=liveness-demo order=2
+# Release the scope - updates stop immediately
+scope.release()
+print("Scope released. The listener will no longer print.")
+```
+
+After `release()`, the update graph stops refreshing the table. The listener receives no more updates. This happens immediately — you don't have to wait for garbage collection.
 
 ## How to create a liveness scope
 
-Creating a liveness scope is easy, as it takes no input parameters. It can be created from the [`liveness_scope`](../reference/engine/liveness-scope.md) function or the [`LivenessScope`](../reference/engine/LivenessScope.md) class directly. The former is intended to be used _only_ in a [`with`](https://peps.python.org/pep-0343/) block or as a function decorator. The latter gives a finer degree of control by allowing a scope to be opened more than once. It also allows the explicit release of resources that it manages.
+A liveness scope can be created from the [`liveness_scope`](../reference/engine/liveness-scope.md) function or the [`LivenessScope`](../reference/engine/LivenessScope.md) class directly:
+
+- **`liveness_scope()`** — use in a `with` block or as a function decorator. The scope is automatically released when the block exits.
+- **`LivenessScope()`** — gives finer control. Can be opened multiple times and explicitly released with `release()`.
 
 ```python order=null
 from deephaven.liveness_scope import liveness_scope, LivenessScope
 
-scope_from_method = liveness_scope()
+scope_from_function = liveness_scope()
 scope_from_class = LivenessScope()
 ```
 
-## How to use a liveness scope
+## Liveness scope methods
 
-A liveness scope, once created, has several methods that can be used:
+A liveness scope has several methods:
 
-- `manage(referent)` explicitly manages the object in the current scope.
-- `preserve(referent)` preserves the object in the scope outside the current scope.
-- `unmanage(referent)` causes the current scope to no longer manage the given object.
-- `open()` opens a liveness scope. This is meant to be used in a `with` statement. This method is _only_ available to liveness scopes created directly from the class.
-- `release()` closes a liveness scope and all of its managed resources. This method is _only_ available to liveness scopes created directly from the class.
+- **`open()`** — opens the scope for use in a `with` statement. Only available on `LivenessScope`.
+- **`release()`** — closes the scope and stops updating all managed resources. Only available on `LivenessScope`.
+- **`manage(referent)`** — explicitly manages an object in this scope.
+- **`preserve(referent)`** — keeps an object live in the outer scope when the current scope exits.
+- **`unmanage(referent)`** — stops managing an object so it can be collected.
 
-### The method
+### Using the function (`liveness_scope`)
 
-Using the method creates a [`SimpleLivenessScope`](/core/pydoc/code/deephaven.liveness_scope.html#deephaven.liveness_scope.SimpleLivenessScope), which can only be opened once. If the method is used, it must be done in a `with` block or as a decorator. Any and all objects created within the scope will be automatically managed by it.
+The `liveness_scope` function creates a scope that automatically releases when the `with` block or decorated function exits. All ticking tables created inside stop updating when the scope ends.
+
+**Problem:** You need a static snapshot from a ticking table, but the intermediate ticking table keeps updating after you're done with it.
+
+**Solution:** Use a liveness scope to stop the intermediate table, while preserving the snapshot:
 
 ```python skip-test
+from deephaven import time_table
+from deephaven.liveness_scope import liveness_scope
+
 with liveness_scope() as scope:
-    ticking_table = some_ticking_source()
-    table = ticking_table.snapshot().join(table=other_ticking_table, on=key_cols)
-    scope.preserve(table)
-return table
+    tt = time_table("PT1S").update("X = i")  # Ticking table
+    snapshot = tt.snapshot()  # Static snapshot of current data
+    scope.preserve(snapshot)  # Keep the snapshot alive after scope exits
 
-
-@liveness_scope()
-def get_values() -> npt.NDArray[np.double]:
-    ticking_table = some_ticking_source().last_by(["Sym"])
-    return dhnp.to_numpy(ticking_table)
+# tt is no longer updating, but snapshot is still available
+result = snapshot
 ```
 
-### The class
+Use `preserve` to keep specific objects alive after the scope exits. Everything else stops updating.
 
-Creating the class directly gives greater control. It allows a scope to be opened more than once. The scope can also release the resources it manages when it is no longer needed. Users writing queries with many objects that will eventually need to be garbage collected should consider using a liveness scope to control when the objects are deleted and the memory freed.
+**Problem:** A function creates temporary ticking tables to compute a result, but those tables keep updating after the function returns.
+
+**Solution:** Use `liveness_scope` as a decorator — all tables created inside stop updating when the function returns:
 
 ```python skip-test
-def make_table_and_scope(a: int):
+import deephaven.numpy as dhnp
+from deephaven.liveness_scope import liveness_scope
+
+
+@liveness_scope
+def get_current_values(source_table):
+    # Filter to latest rows, convert to numpy, then let table stop updating
+    latest = source_table.last_by("Sym")
+    return dhnp.to_numpy(latest)
+```
+
+### Using the class (`LivenessScope`)
+
+Use `LivenessScope` when you need to control **when** the scope is released, rather than tying it to a `with` block.
+
+**Problem:** A dashboard creates filtered views based on user input. Each time the user changes the filter, a new ticking table is created — but the old one keeps updating in the background.
+
+**Solution:** Return both the table and its scope. When the user changes the filter, release the old scope before creating a new one:
+
+```python skip-test
+from deephaven import time_table
+from deephaven.liveness_scope import LivenessScope
+
+
+def create_filtered_view(filter_value):
+    """Create a ticking table that the caller controls."""
     scope = LivenessScope()
     with scope.open():
-        ticking_table = some_ticking_source().where(f"A={a}")
-        return some_ticking_table, scope
+        tt = time_table("PT1S").where(f"i % 10 == {filter_value}")
+        return tt, scope
 
 
-t1, s1 = make_table_and_scope(1)
-# .. wait for a while
-s1.release()
-t2, s2 = make_table_and_scope(2)
-# .. wait for a while again
-s2.release()
+# Create a view
+table, scope = create_filtered_view(5)
+# ... display table in UI, use it for a while ...
+
+# User changes filter - stop old table, create new one
+scope.release()
+table, scope = create_filtered_view(3)
 ```
 
-## To use the method or the class?
+## When to use the function vs. the class
 
-Queries with simpler use cases for a liveness scope will typically find the method to be sufficient for their needs. It automatically manages objects created within it, and stops managing any objects outside of the scope unless it's explicitly told otherwise via `preserve`.
-
-For queries in which more fine-grained control over the lifespan of objects is required, the class is recommended.
+| Use case                                                      | Recommendation                       |
+| ------------------------------------------------------------- | ------------------------------------ |
+| Extract data from a ticking table, then discard it            | `liveness_scope()` with `with` block |
+| Decorated function that creates temporary tables              | `liveness_scope` decorator           |
+| Table lifetime controlled by user action (e.g., button click) | `LivenessScope` class                |
+| Rotating through multiple views in a dashboard                | `LivenessScope` class                |
 
 ## Related documentation
 

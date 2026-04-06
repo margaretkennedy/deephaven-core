@@ -20,25 +20,43 @@ A [`LivenessScope`](./LivenessScope.md).
 
 ## Examples
 
-The method can be used in a `with` block to encapsulate code that produces ticking data. In the example below, `table` is explicitly preserved outside of the `with` block. `ticking_table` is cleaned up once the `with` block is exited.
+Use `liveness_scope` in a `with` block when you need to create intermediate ticking tables that should stop updating after the block exits. In this example, a function-generated blink table is created to compute a snapshot, then stops updating when the block exits:
 
 ```python skip-test
 from deephaven.liveness_scope import liveness_scope
+from deephaven import function_generated_table, empty_table
+
+
+def random_data():
+    return empty_table(5).update(
+        ["X = randomInt(0, 10)", "Y = randomDouble(-50.0, 50.0)"]
+    )
+
 
 with liveness_scope() as scope:
-    ticking_table = some_ticking_source()
-    table = ticking_table.snapshot().join(table=other_ticking_table, on=...)
-    scope.preserve(table)
-return table
+    blink_table = function_generated_table(
+        table_generator=random_data, refresh_interval_ms=1000
+    )
+    snapshot = blink_table.snapshot()  # Static snapshot
+    scope.preserve(snapshot)  # Keep snapshot alive after scope exits
+
+# blink_table stops updating here; snapshot is still available
+result = snapshot
 ```
 
-It can also be used as a decorator to achieve a similar result.
+Use `preserve` to keep specific objects alive after the scope exits. Everything else stops updating.
+
+As a decorator, the scope wraps the entire function — all ticking tables created inside stop updating when the function returns:
 
 ```python skip-test
-@liveness_scope()
-def get_values():
-    ticking_table = some_ticking_source().last_by("Sym")
-    return dhnp.to_numpy(ticking_table)
+import deephaven.numpy as dhnp
+from deephaven.liveness_scope import liveness_scope
+
+
+@liveness_scope
+def get_current_values(source_table):
+    latest = source_table.last_by("Sym")
+    return dhnp.to_numpy(latest)  # Table stops updating after return
 ```
 
 ## Related documentation
