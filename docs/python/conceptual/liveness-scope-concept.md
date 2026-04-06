@@ -53,6 +53,90 @@ print("Scope released. The listener will no longer print.")
 
 After `release()`, the update graph stops refreshing the table. The listener receives no more updates. This happens immediately — you don't have to wait for garbage collection.
 
+## How liveness scopes work
+
+Deephaven's liveness scopes allow the nodes in a refreshing query's update propagation graph to be updated proactively by assessing the nodes' "liveness" (whether or not they are active), rather than only via actions of the Java garbage collector. This does not replace garbage collection (GC), but it does allow cleanup to happen immediately when objects in the GUI are not needed. This is accomplished internally via reference counting, and works automatically for all users.
+
+When a table is live in Deephaven, the update propagation graph accumulates parent nodes that produce data (data sources) at the top, and all the child nodes that stream down the graph. Deephaven's liveness scope system keeps track of these referents: when child objects cease to be referenced and the parents' liveness count goes down, they will be cleaned up immediately without waiting for GC.
+
+## Demonstrating the problem
+
+Before we demonstrate liveness scopes in action, let's demonstrate the problem that liveness scopes solve.
+
+This query creates a simple tree table grouped by Sym. Two tables will open: `crypto` and `data`.
+
+```python order=null
+from deephaven.csv import read as read_csv
+from deephaven import merge
+
+crypto = (
+    read_csv(
+        "https://media.githubusercontent.com/media/deephaven/examples/main/CryptoCurrencyHistory/CSV/FakeCryptoTrades_20230209.csv"
+    )
+    .first_by("Instrument")
+    .update(["ID = Instrument", "Parent = (String)null"])
+    .update(
+        [
+            "Timestamp = (Instant)null",
+            "Exchange = (String)null",
+            "Price = (Double)null",
+            "Size = (Double)null",
+        ]
+    )
+)
+
+data = read_csv(
+    "https://media.githubusercontent.com/media/deephaven/examples/main/CryptoCurrencyHistory/CSV/FakeCryptoTrades_20230209.csv"
+).update(["ID = String.valueOf(ii)", "Parent = Instrument"])
+
+combo = merge([crypto, data])
+
+combo_tree = combo.tree("ID", "Parent")
+
+data = None
+combo = None
+```
+
+The above example works, but the query creates many objects that are not needed after it is run. The [`LivenessScope`](https://docs.deephaven.io/core/pydoc/code/deephaven.liveness_scope.html#deephaven.liveness_scope.LivenessScope) can manage these objects and release them when they are no longer needed. This is best practice because it allows Deephaven to conserve memory.
+
+In this example, we will run the same query, but enclose it in a [`LivenessScope`](https://docs.deephaven.io/core/pydoc/code/deephaven.liveness_scope.html#deephaven.liveness_scope.LivenessScope).
+
+```python order=null
+from deephaven.liveness_scope import LivenessScope
+from deephaven.csv import read as read_csv
+from deephaven import merge
+
+scope = LivenessScope()
+
+with scope.open():
+    crypto = (
+        read_csv(
+            "https://media.githubusercontent.com/media/deephaven/examples/main/CryptoCurrencyHistory/CSV/FakeCryptoTrades_20230209.csv"
+        )
+        .first_by("Instrument")
+        .update(["ID = Instrument", "Parent = (String)null"])
+        .update(
+            [
+                "Timestamp = (Instant)null",
+                "Exchange = (String)null",
+                "Price = (Double)null",
+                "Size = (Double)null",
+            ]
+        )
+    )
+
+    data = read_csv(
+        "https://media.githubusercontent.com/media/deephaven/examples/main/CryptoCurrencyHistory/CSV/FakeCryptoTrades_20230209.csv"
+    ).update(["ID = String.valueOf(ii)", "Parent = Instrument"])
+
+    combo = merge([crypto, data])
+
+    combo_tree = combo.tree("ID", "Parent")
+
+data = None
+combo = None
+```
+
 ## How to create a liveness scope
 
 A liveness scope can be created from the [`liveness_scope`](../reference/engine/liveness-scope.md) function or the [`LivenessScope`](../reference/engine/LivenessScope.md) class directly:
@@ -157,7 +241,8 @@ table, scope = create_filtered_view(3)
 
 ## Related documentation
 
-- [LivenessScope](../reference/engine/LivenessScope.md)
-- [liveness_scope](../reference/engine/liveness-scope.md)
+- [`LivenessScope`](../reference/engine/LivenessScope.md)
+- [`liveness_scope`](../reference/engine/liveness-scope.md)
 - [Execution Context](./execution-context.md)
+- [Table Update Model](./table-update-model.md)
 - [Pydoc](/core/pydoc/code/deephaven.liveness_scope.html#module-deephaven.liveness_scope)

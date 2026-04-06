@@ -145,6 +145,7 @@ The [`LivenessScopeStack`](/core/javadoc/io/deephaven/engine/liveness/LivenessSc
 
 ## Related documentation
 
-- [`LivenessScope`](/core/javadoc/io/deephaven/engine/liveness/LivenessScope.html)
+- [`LivenessScope`](../reference/engine/LivenessScope.md)
 - [`LivenessScopeStack`](/core/javadoc/io/deephaven/engine/liveness/LivenessScopeStack.html)
+- [Execution Context](./execution-context.md)
 - [Table Update Model](./table-update-model.md)
