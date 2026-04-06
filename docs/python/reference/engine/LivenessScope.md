@@ -20,10 +20,10 @@ An instance of a `LivenessScope` class.
 
 ## Examples
 
-The following example creates a [function-generated](../table-operations/create/function_generated_table.md) blink table inside a `LivenessScope`. After the `with` block exits, the scope remains open and the table continues updating. Calling `release` stops the update graph from refreshing the table immediately — you don't have to wait for garbage collection.
+The following example uses [function generated tables](../table-operations/create/function_generated_table.md) to produce a blink table with 5 new rows per second. Encapsulating the function generated table inside of a liveness scope enables the safe deletion of data once the scope has been released. `table_from_func` will continue to tick after the scope is released until _all_ referents have been deleted. That includes the ticking table in the UI.
 
 ```python ticking-table order=null
-from deephaven.liveness_scope import LivenessScope
+from deephaven.liveness_scope import liveness_scope, LivenessScope
 from deephaven import function_generated_table, empty_table
 
 
@@ -36,18 +36,14 @@ def random_data():
 scope = LivenessScope()
 
 with scope.open():
-    # Create a blink table that generates 5 rows per second
-    blink_table = function_generated_table(
+    table_from_func = function_generated_table(
         table_generator=random_data, refresh_interval_ms=1000
     )
 
-# Table continues ticking here (scope is open, not released)
-
-# When done, stop the table from updating
+# After a while...
+del table_from_func
 scope.release()
 ```
-
-`LivenessScope` is useful when you need explicit control over when tables stop updating — for example, when generating data for a temporary analysis or rotating through views in a dashboard.
 
 ## Related documentation
 

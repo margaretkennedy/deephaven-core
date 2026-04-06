@@ -20,7 +20,7 @@ An instance of a `LivenessScope` class.
 
 ## Examples
 
-The following example creates a [function-generated](../table-operations/create/create.md) blink table inside a `LivenessScope`. After the try block exits, the scope remains open and the table continues updating. Calling `release` stops the update graph from refreshing the table immediately — you don't have to wait for garbage collection.
+The following example uses [function-generated tables](../table-operations/create/create.md) to produce a blink table with 5 new rows per second. Encapsulating the function-generated table inside a liveness scope enables the safe deletion of data once the scope has been released. `tableFromFunc` will continue to tick after the scope is released until _all_ referents have been deleted, including the ticking table in the UI.
 
 ```groovy ticking-table order=null
 import io.deephaven.engine.liveness.*
@@ -29,6 +29,7 @@ import io.deephaven.util.SafeCloseable
 import io.deephaven.engine.table.impl.util.FunctionGeneratedTableFactory
 
 defaultCtx = ExecutionContext.getContext()
+
 
 randomData = { ->
     try (SafeCloseable ignoredContext = defaultCtx.open()) {
@@ -39,17 +40,9 @@ randomData = { ->
 scope = new LivenessScope()
 
 try (SafeCloseable ignored = LivenessScopeStack.open(scope, false)) {
-    // Create a blink table that generates 5 rows per second
-    blinkTable = FunctionGeneratedTableFactory.create(randomData, 1000)
+    tableFromFunc = FunctionGeneratedTableFactory.create(randomData, 1000)
 }
-
-// Table continues ticking here (scope is open, not released)
-
-// When done, stop the table from updating
-scope.release()
 ```
-
-`LivenessScope` is useful when you need explicit control over when tables stop updating — for example, when generating data for a temporary analysis or rotating through views in a dashboard.
 
 ## Related documentation
 
