@@ -108,8 +108,6 @@
               {
                 "label": "Deephaven Vectors",
                 "path": "conceptual/arrays-vs-vectors.md"
-                "label": "Initialization and updates",
-                "path": "how-to-guides/initialization-and-updates.md"
               },
               {
                 "label": "Core API design",
