@@ -36,7 +36,7 @@ Java arrays use `int`-based indexing. Accessing an index outside the array bound
 Deephaven vectors are Deephaven's specialized collection type, implemented by the [`Vector`](https://deephaven.io/core/javadoc/io/deephaven/vector/Vector.html) interface and its subclasses (`IntVector`, `DoubleVector`, etc.). Table operations that group data produce vector columns:
 
 ```groovy order=result,resultMeta
-result = emptyTable(5).update("X = ii % 2", "Y = ii").groupBy("X")
+result = emptyTable(5).update("X = ii % 2", "Y = (int) ii").groupBy("X")
 resultMeta = result.meta()
 ```
 

@@ -42,7 +42,7 @@ Deephaven vectors are Deephaven's specialized collection type, implemented by th
 ```python order=result,result_meta
 from deephaven import empty_table
 
-result = empty_table(5).update(["X = ii % 2", "Y = ii"]).group_by("X")
+result = empty_table(5).update(["X = ii % 2", "Y = (int) ii"]).group_by("X")
 result_meta = result.meta_table
 ```
 
@@ -131,8 +131,8 @@ converted_meta = converted.meta_table
 
 **Use Java arrays when:**
 
-- Passing data to external Java libraries that expect arrays.
-- Working with fixed, known-size data.
+- Passing data to external Java libraries that expect arrays
+- Working with fixed, known-size data
 - You need to mutate elements in place.
 
 **Use Deephaven vectors when:**
