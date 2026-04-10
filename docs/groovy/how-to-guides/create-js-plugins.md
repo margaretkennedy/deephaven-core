@@ -2,7 +2,7 @@
 title: Create a JavaScript plugin
 ---
 
-JS plugins are registered using Python packages regardless of which query language you use. See [Create a JavaScript plugin](../../python/how-to-guides/create-js-plugins.md) in the Python documentation for the full guide.
+JS plugins are registered using Python packages regardless of which query language you use. See [Create a JavaScript plugin](https://deephaven.io/core/docs/how-to-guides/create-js-plugins/) in the Python documentation for the full guide.
 
 ## Related documentation
 
