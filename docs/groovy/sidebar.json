@@ -510,6 +510,10 @@
                     "path": "how-to-guides/user-interface/navigating-the-ui.md"
                   },
                   {
+                    "label": "Upload a table from a file",
+                    "path": "how-to-guides/user-interface/upload-table-from-file.md"
+                  },
+                  {
                     "label": "Set date-time format",
                     "path": "how-to-guides/set-date-time-format.md"
                   },
