@@ -2,7 +2,7 @@
 title: Upload a table from a file
 ---
 
-Deephaven lets you import a CSV or other delimited file directly from the UI and make it immediately available as a table in your session.
+You can import a CSV or other delimited file directly from the Deephaven UI and make it immediately available as a table in your session.
 
 ## Upload a table from a file
 
